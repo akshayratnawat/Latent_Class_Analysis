@@ -1,0 +1,206 @@
+---
+title: "LatentClass_Analysis"
+author: "Akshay Ratnawat"
+date: "2/6/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+
+# Latent Class Analysis in German Credit DataSet
+
+### Importing the data
+```{r cars}
+data = read.csv("C:\\Users\\aksha\\OneDrive\\Desktop\\Files\\Courses\\Data Mining\\Lecture_3\\Assignment_3\\german_credit_data.csv")
+
+# Selecting the Categorical Variables
+myvars = c("Sex", "Job", "Housing", "Saving.accounts", "Checking.account", "Purpose")
+newdata = data[myvars]
+head(newdata)
+```
+### Visualizing the data
+```{r fig.height=8, fig.width=12}
+layout(matrix(c(1,2,3,
+                4,4,5,
+                6,6,6), nrow = 3, ncol =3,  byrow = TRUE))
+
+barplot(table(newdata$Sex), main="Gender")
+barplot(table(newdata$Job), main="Number of Jobs")
+barplot(table(newdata$Checking.account), main="Checking Accounts Balance")
+barplot(table(newdata$Saving.accounts), main="Saving Accounts Balance")
+barplot(table(newdata$Housing), main="Type of Housing")
+barplot(table(newdata$Purpose), main="Purpose for Credit")
+```
+The overall profile of the German Credit Portfolio is as follows:
+
+1. Majority of Male population.
+2. Majority have two jobs.
+3. Low Savings Account Balance
+4. Little to Moderate Checking Account Balance
+5. Majority of the credit is for Durable consumer Goods such as car, Radio, TV. Credit for productive uses is quite less.
+
+### Converting the Categorical Data into Numerical Format
+```{r}
+# Replacing all the Missing values with NA
+newdata[is.na(newdata)] <- "NA"
+```
+
+
+```{r}
+unclassed_data = as.data.frame(data.matrix(data.frame(unclass(newdata))))
+colnames(unclassed_data) <- c("Sex_Class", "Job_Class","Housing_Class","Savings.accounts_Class","Checking.account_Class",
+                              "Purpose_Class")
+
+```
+
+### Dividing into Training and test Data
+```{r}
+## 75% of the sample size
+smp_size <- floor(0.70 * nrow(unclassed_data))
+
+## set the seed to make your partition reproducible
+set.seed(123)
+train_ind <- sample(seq_len(nrow(unclassed_data)), size = smp_size)
+
+train <- unclassed_data[train_ind, ]
+test <- unclassed_data[-train_ind, ]
+
+# Checking the Dimension of the data frame
+dim.data.frame(train)
+dim.data.frame(test)
+```
+
+### Running the Lazarsfeld's Latent Class Analysis
+
+```{r}
+library(poLCA)
+f = cbind(Sex_Class, Housing_Class, Savings.accounts_Class, Purpose_Class,Checking.account_Class )~1
+
+# Creating Data Frames to Store the AIC and BIC
+AIC <- data.frame()
+BIC <- data.frame()
+
+#Running LCA for clusters 2 to 6
+for(i in 2:6){
+              #Run LCA for each level of i, allowing up to 6 iterations
+              lca <- poLCA(f, train, nclass=i, tol=.001, nrep=20, verbose=FALSE)
+              
+              #Combine LCA results AIC and BIC, write to dataframe
+              AIC<- rbind(AIC, cbind(i, (lca$aic)))
+              BIC<-rbind(BIC, cbind(i, (lca$bic)))
+              }
+
+# Combining the AIC and BIC 
+results = cbind(AIC, BIC$V2)
+names(results) =  c("Classes","AIC","BIC")
+results = data.frame(results)
+results
+```
+
+### Plotting the AIC and BIC information
+```{r}
+library(ggplot2)
+ggplot(results, aes(Classes)) + 
+  geom_line(aes(y = AIC, colour = "AIC")) + 
+  geom_line(aes(y = BIC, colour = "BIC")) + 
+  labs(y = "Metrics")
+```
+From above it seems we should choose 3 class for classification because: 
+1. A model with lower AIC is better which gives us 5 classes
+2. A model with lower BIC is better which gives us 2 classes.
+3. Thus we have a tradeoff between a lower AIC and a lower BIC because as AIC falls BIC rises.
+4. Thus a better number of class would be 3 classes. 
+
+### Running the model with two classes
+```{r fig.height=8, fig.width=12}
+lca_3class <- poLCA(f, train, nclass=3, tol=.001, nrep=20, verbose=FALSE, graphs =TRUE)
+```
+
+Printing the Probabilities
+```{r}
+lca_3class$probs
+```
+
+
+### Performing Test Validation for the Above Latent Class Model
+```{r fig.height=8, fig.width=12}
+# Storing the probabilities form the train model
+LCA.train.object = lca_3class$probs
+
+# Fitting the model with just 1 repetition and using the train model probabilities
+lca_2class_.test = poLCA(f, test, nclass=3, nrep=1, tol=.001, verbose=FALSE, graphs=TRUE, probs.start = LCA.train.object )
+```
+From above we see that:
+1. Class proportions are quite similar, thus our model is stable.
+2. The Marginal Distribution is different for the Housing Class.
+3. The Marginal Distribution is different for the Purpose Class.
+
+Thus overall though there is some variation in the marginal distributions of certain classes the overall proportion of class is quite similar. Thus though this is not a great model but it is good enough to go ahead.
+
+Classes:
+Sex: 
+1= Female,
+2= Male,
+     
+Housing Class:
+1 = Free,
+2 = Own,
+3 = Rented,
+
+Savings.accounts:
+1 = Little,
+2 = Moderate,
+3 = NA,
+4 = Quite Rich,
+5 = Rich,
+
+Purpose:
+1 = Business,
+2 = Car,
+3 = Domestic/Appliances,
+4 = Education,
+5 = Furniture,
+6 = Radio/TV,
+7 = Repairs,
+8 = Vacation,
+
+Checking.Account:
+1 = Little,
+2 = Moderate,
+3 = NA,
+4 = Rich,
+
+
+### Analyzing the Classes:
+
+Class1: Middle Class Families with little savings and taking credit for consumer durable goods
+1. Most of them are Males,
+2. Most of them lives in owned houses,
+3. Either they don't have saving account or have little savings,
+4. Most of the credit is for Radio and TVs or cars,
+5. Most of them don't have a Checking account,
+
+Class2: Females who are either working or doing household work.
+1. Most of them are Females,
+2. They live in either owned or mostly rented homes,
+3. They have little savings,
+4. Most of the credit is for Furniture or Cars,
+5. Most of them have little or no checking account balances
+
+Class3: Salaried Males with little savings and credit account
+1. Most of them are Males,
+2. They live in owned houses,
+3. They have little savings,
+4. Most of the credit is for cars but credit is also for other purposes evenly distributed,
+5. Most of them have little to moderate credit.
+
+- Naming the classes is quite difficult if one does not have proper understanding of the data. But if exploratory analysis is done properly then naming the classes is not that difficult. 
+
+- The most difficult part is to find the number of classes that have not only business sense but also is appropriate from the modelling perspective.
+
+
+
+```{r}
+```
